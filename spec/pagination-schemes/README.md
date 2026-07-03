@@ -1,6 +1,6 @@
 # OpenAPI Pagination Schemes Extension
 
-**Spec version:** 0.1.0
+**Spec version:** 0.2.0
 
 ---
 
@@ -30,6 +30,8 @@ components:
         bodyFields: { ... }
         headerFields: { ... }
       response:            # Response Pagination Fields Object (§4.4)
+        envelope:          # Envelope Object (§4.4.2)
+          itemsField: results
         bodyFields:
           <field-name>:    # Response Field Object (§4.4.1)
             role: nextPageToken | nextCursor | nextLink | totalCount | totalPages | pageSize | currentPage
@@ -101,6 +103,7 @@ Describes the fields the client reads from the server response to determine the 
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `envelope` | `EnvelopeObject` (§4.4.2) | Locates the array of items being paginated within the response body. Defaults to the response body root. |
 | `bodyFields` | `Record<string, ResponseFieldObject>` | Top-level fields in the JSON response body. Key is the field name as it appears in the response. |
 | `headers` | `Record<string, ResponseFieldObject>` | HTTP response headers. Key is the header name. |
 | `x-*` | any | Extension fields. |
@@ -112,6 +115,15 @@ Describes the fields the client reads from the server response to determine the 
 | `description` | string | Human-readable description. |
 | `schema` | OAS Schema Object | JSON Schema describing the field value. |
 | `role` | `ResponseRole` (§4.5) | Semantic role of this field. |
+| `x-*` | any | Extension fields. |
+
+#### 4.4.2 Envelope Object
+
+Some APIs return the paginated array as the response body itself (`[ {...}, {...} ]`); others wrap it in an envelope alongside metadata (`{ "results": [ {...} ], "nextPageToken": "..." }`). The Envelope Object says which is which, so that both this extension and the [CRUD Causality Extension](../crud-causality/README.md) can locate the item array using the same convention.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `itemsField` | string | Dot-path to the field holding the array of items (e.g. `results`, `data.items`). Omit, or set to `null`, when the response body root **is** the array. |
 | `x-*` | any | Extension fields. |
 
 ### 4.5 Semantic Roles
@@ -323,6 +335,33 @@ paginationSchemes:
           role: pageSize
 ```
 
+### 8.5 Enveloped response body
+
+```yaml
+paginationSchemes:
+  pageToken:
+    type: pageToken
+    request:
+      queryParameters:
+        pageToken:
+          role: pageToken
+    response:
+      envelope:
+        itemsField: results
+      bodyFields:
+        nextPageToken:
+          role: nextPageToken
+```
+
+Matches a response body shaped like:
+
+```json
+{
+  "results": [ { "id": 1 }, { "id": 2 } ],
+  "nextPageToken": "abc123"
+}
+```
+
 ---
 
 ## 9. Validation
@@ -334,6 +373,7 @@ A conforming implementation MUST enforce:
 3. `role` values in request fields MUST be from: `page`, `pageSize`, `offset`, `pageToken`, `cursor` — or an `x-` prefixed extension.
 4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `totalCount`, `totalPages`, `pageSize`, `currentPage` — or an `x-` prefixed extension.
 5. The `scheme` field in a Pagination Application Object (§5) MUST reference a key that exists in `components.paginationSchemes`.
+6. `itemsField` in an Envelope Object, when present, MUST resolve to a field whose value is an array.
 
 A validation error SHOULD identify the precise location of the violation (e.g. `paginationSchemes.myScheme.request.queryParameters.page`).
 
