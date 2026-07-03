@@ -1,6 +1,6 @@
 # OpenAPI CRUD Causality Extension
 
-**Spec version:** 0.1.0
+**Spec version:** 0.2.0
 
 ---
 
@@ -13,7 +13,7 @@ The OpenAPI CRUD Causality Extension fills that gap. It adds:
 * a `crudResources` map under `components`, describing the objects behind the API — their schema, their canonical URL, and the collections they can belong to;
 * a `crud` field on individual OAS Operation Objects, stating which CRUD action the operation performs and its effect on the resource and its collections.
 
-Together these are enough to derive the full state-transition behaviour of the API: given the spec alone, a tool can build a stateful mock server (or a client-side cache) that creates, lists, reads, updates, and deletes objects exactly the way the real API does — see [§9 Reference Implementation](#reference-implementation).
+Together these are enough to derive the full state-transition behaviour of the API: given the spec alone, a tool can build a stateful mock server (or a client-side cache) that creates, lists, reads, updates, and deletes objects exactly the way the real API does — including navigating from a `list` response straight to the `urlTemplate` of one of its elements, via `identity.bindings` (§4.1.2) — see [Reference Implementation](#reference-implementation).
 
 The extension can be applied to existing OpenAPI documents without modification by using an [OpenAPI Overlay](https://spec.openapis.org/overlay/v1.0.0.html).
 
@@ -28,6 +28,9 @@ components:
       schema: { ... }           # OAS Schema Object, or $ref
       identity:
         urlTemplate: /widgets/{widgetId}
+        bindings:                # Binding Object (§4.1.2) — how to fill in / read back {widgetId}
+          widgetId:
+            field: id
       collections:
         <collection-name>:      # Collection Object (§4.2)
           urlTemplate: /widgets
@@ -96,7 +99,37 @@ Describes one kind of object behind the API.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `urlTemplate` | string | **Yes** | URL template for a single object, e.g. `/widgets/{widgetId}`. Path parameter names SHOULD match the corresponding item-GET operation's path parameters. |
+| `bindings` | `Record<string, BindingObject>` (§4.1.2) | No | Maps each `{variable}` in `urlTemplate` that is derivable from the object itself to the object field it comes from. Key is the template variable name. |
 | `x-*` | any | No | Extension fields. |
+
+#### 4.1.2 Binding Object
+
+Normally there is no need to *construct* an object's URL — an operation that returns or accepts one just uses it as-is. The one place construction is needed is going from an element of a `list` response (§4.3.1) to that element's own URL: a collection response only contains the objects' fields, not their URLs, so a client needs a way to fill in `identity.urlTemplate`'s variables from those fields — and, conversely, given a URL (e.g. a `Location` header from `create`), to read an object field back out of it.
+
+`bindings` is that map, and it is used in both directions:
+
+* **Object → URL** (e.g. rendering a link for a `list` element): substitute each `{variable}` in `urlTemplate` with the value at `field`'s path in the object.
+* **URL → object** (e.g. after `create` returns a `Location` header per §4.3.2): match the URL against `urlTemplate`, and treat the value captured for each bound `{variable}` as the value of the corresponding object `field` — this is how a client learns a server-`generated` id (§4.5) that's only ever seen embedded in a URL, never in a response body.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `field` | string | **Yes** | Dot-path to the object field this URL template variable corresponds to. |
+| `x-*` | any | No | Extension fields. |
+
+Not every `{variable}` in `urlTemplate` needs a binding. A variable that isn't listed in `bindings` MUST instead be resolvable from the request context the object was reached through — typically because the same variable name also appears in the `urlTemplate` of a collection (§4.2) the object is a member of, in which case it takes the value that was used to request that collection. For example, given:
+
+```yaml
+identity:
+  urlTemplate: /users/{userId}/widgets/{widgetId}
+  bindings:
+    widgetId:
+      field: id
+collections:
+  widgets:
+    urlTemplate: /users/{userId}/widgets
+```
+
+`widgetId` comes from the `id` field of each widget object; `userId` isn't a field on the widget at all — it's simply carried over unchanged from whichever `/users/{userId}/widgets` request produced the list.
 
 ### 4.2 Collection Object
 
@@ -151,7 +184,9 @@ Describes where the newly created object's URL is found.
 | `name` | string | Conditional | Header name (if `source: header`) or dot-path to a response body field (if `source: bodyField`). Not used for `template`. |
 | `x-*` | any | No | Extension fields. |
 
-When `source: template`, the URL is derived by substituting the created object's fields (request body plus `addedFields`) into the resource's `identity.urlTemplate` (§4.1.1).
+When `source: template`, the URL is derived by substituting the created object's fields (request body plus `addedFields`) into the resource's `identity.urlTemplate` (§4.1.1), using `identity.bindings` (§4.1.2) to know which field fills which variable.
+
+Regardless of `source`, once the object's URL is known, `identity.bindings` MAY also be read in reverse: match the URL against `identity.urlTemplate` and treat the captured value for each bound `{variable}` as authoritative for the corresponding object field, even if that field isn't otherwise listed in `addedFields`.
 
 ### 4.4 Added Field Object
 
@@ -260,6 +295,9 @@ components:
         $ref: '#/components/schemas/Widget'
       identity:
         urlTemplate: /widgets/{widgetId}
+        bindings:
+          widgetId:
+            field: id
       collections:
         widgets:
           urlTemplate: /widgets
@@ -355,6 +393,42 @@ delete:
     removesFrom: [ recentWidgets ]
 ```
 
+### 7.5 Navigating from a nested `list` element to its item URL
+
+`GET /users/{userId}/widgets` returns widgets that only carry their own `id`, not a `userId` field or a full URL:
+
+```json
+{
+  "results": [ { "id": "w1", "name": "Left-handed sprocket" } ]
+}
+```
+
+```yaml
+components:
+  crudResources:
+    widget:
+      identity:
+        urlTemplate: /users/{userId}/widgets/{widgetId}
+        bindings:
+          widgetId:
+            field: id
+      collections:
+        widgets:
+          urlTemplate: /users/{userId}/widgets
+          envelope:
+            itemsField: results
+
+paths:
+  /users/{userId}/widgets:
+    get:
+      x-crud: { action: list, resource: widget, collection: widgets }
+  /users/{userId}/widgets/{widgetId}:
+    get:
+      x-crud: { action: read, resource: widget }
+```
+
+To build the item URL for `{ "id": "w1", ... }` reached via `GET /users/42/widgets`: `widgetId` is bound to the object's `id` field (`w1`); `userId` isn't bound to a field, so it's carried over unchanged from the collection request (`42`) — giving `/users/42/widgets/w1`.
+
 ---
 
 ## 8. Validation
@@ -369,6 +443,8 @@ A conforming implementation MUST enforce:
 6. When `mode` is `patch`, `patchFormat` SHOULD be present.
 7. Every name in `memberOf` and `removesFrom` (other than `"*"`) MUST reference a key in the resource's `collections`.
 8. `identity.urlTemplate` (§4.1.1) and any `collections.*.urlTemplate` (§4.2) path parameters MUST be valid OAS path template syntax.
+9. Every key in `identity.bindings` MUST correspond to a `{variable}` present in `identity.urlTemplate`.
+10. Every `{variable}` in `identity.urlTemplate` that is not a key in `identity.bindings` SHOULD also appear, with the same name, in the `urlTemplate` of at least one collection the resource declares under `collections`.
 
 A validation error SHOULD identify the precise location of the violation (e.g. `paths./widgets.post.x-crud.url`).
 
