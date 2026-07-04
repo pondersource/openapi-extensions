@@ -34,7 +34,7 @@ components:
           itemsField: results
         bodyFields:
           <field-name>:    # Response Field Object (§4.4.1), key MAY use dot-notation
-            role: nextPageToken | nextCursor | nextLink | previousPageToken | previousLink | nextSyncToken | totalCount | totalPages | pageSize | currentPage
+            role: nextPageToken | nextCursor | nextLink | previousPageToken | previousLink | nextSyncToken | totalCount | totalPages | pageSize | currentPage | offset
         headers:
           <header-name>: { ... }
 ```
@@ -155,6 +155,7 @@ Some APIs return the paginated array as the response body itself (`[ {...}, {...
 | `totalPages` | `pageNumber` | Total number of pages. |
 | `pageSize` | all | Number of items in the current page (as confirmed by the server). |
 | `currentPage` | `pageNumber` | The current page number (as confirmed by the server). |
+| `offset` | `pageNumber` | The current offset into the result set (as confirmed by the server). |
 
 ---
 
@@ -465,6 +466,35 @@ Matches a response body shaped like:
 
 The same convention resolves the `tokenPagination.pageToken` field used by the Android Enterprise API.
 
+### 8.9 Offset as a confirmed response field (Giphy-style)
+
+```yaml
+paginationSchemes:
+  offset:
+    type: pageNumber
+    request:
+      queryParameters:
+        offset:
+          role: offset
+        limit:
+          role: pageSize
+    response:
+      bodyFields:
+        pagination.offset:
+          role: offset
+        pagination.total_count:
+          role: totalCount
+```
+
+Matches a response body shaped like:
+
+```json
+{
+  "data": [ { "id": "abc" } ],
+  "pagination": { "offset": 0, "total_count": 100, "count": 25 }
+}
+```
+
 ---
 
 ## 9. Validation
@@ -474,7 +504,7 @@ A conforming implementation MUST enforce:
 1. `type` MUST be one of `pageNumber`, `pageToken`, `nextLink`, or `incrementalSync`.
 2. At least one of `request` or `response` MUST be present.
 3. `role` values in request fields MUST be from: `page`, `pageSize`, `offset`, `pageToken`, `cursor`, `previousPageToken`, `syncToken` — or an `x-` prefixed extension.
-4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `previousPageToken`, `previousLink`, `nextSyncToken`, `totalCount`, `totalPages`, `pageSize`, `currentPage` — or an `x-` prefixed extension.
+4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `previousPageToken`, `previousLink`, `nextSyncToken`, `totalCount`, `totalPages`, `pageSize`, `currentPage`, `offset` — or an `x-` prefixed extension.
 5. The `scheme` field in a Pagination Application Object (§5) MUST reference a key that exists in `components.paginationSchemes`.
 6. `itemsField` in an Envelope Object, when present, MUST resolve to a field whose value is an array.
 7. A dot-path key in `bodyFields` (request or response) MUST resolve, segment by segment, to a field nested inside the (request or response) body; each segment is a literal property name unless bracket-escaped (e.g. `["a.b"]`).
