@@ -25,7 +25,7 @@ components:
       request:             # Request Pagination Fields Object (§4.3)
         queryParameters:
           <param-name>:    # Request Field Object (§4.3.1)
-            role: page | pageSize | offset | pageToken | cursor | syncToken
+            role: page | pageSize | offset | pageToken | cursor | previousPageToken | syncToken
             required: false
         bodyFields: { ... }
         headerFields: { ... }
@@ -34,7 +34,7 @@ components:
           itemsField: results
         bodyFields:
           <field-name>:    # Response Field Object (§4.4.1)
-            role: nextPageToken | nextCursor | nextLink | nextSyncToken | totalCount | totalPages | pageSize | currentPage
+            role: nextPageToken | nextCursor | nextLink | previousPageToken | previousLink | nextSyncToken | totalCount | totalPages | pageSize | currentPage
         headers:
           <header-name>: { ... }
 ```
@@ -138,6 +138,7 @@ Some APIs return the paginated array as the response body itself (`[ {...}, {...
 | `offset` | `pageNumber` | 0-based item offset. |
 | `pageToken` | `pageToken` | Opaque continuation token from the previous response. |
 | `cursor` | `pageToken` | Synonym for `pageToken`. |
+| `previousPageToken` | `pageToken` | Opaque token, from a `previousPageToken` response field, used to fetch the page before the current one. |
 | `syncToken` | `incrementalSync` | Identifies a previous sync point. The server returns only items changed since that point. |
 
 #### Response Roles
@@ -147,6 +148,8 @@ Some APIs return the paginated array as the response body itself (`[ {...}, {...
 | `nextPageToken` | `pageToken` | Token to send with the next request. Absent or empty when there are no more pages. |
 | `nextCursor` | `pageToken` | Synonym for `nextPageToken`. |
 | `nextLink` | `nextLink` | Full URL of the next page. Absent when there are no more pages. |
+| `previousPageToken` | `pageToken` | Token to send to fetch the previous page. Absent or empty when there is no previous page. |
+| `previousLink` | `nextLink` | Full URL of the previous page. Absent when there is no previous page. |
 | `nextSyncToken` | `incrementalSync` | Returned on the last page of a full listing, in place of (or alongside) `nextPageToken`. Persist it and send it back as `syncToken` on a future request to receive an incremental delta. |
 | `totalCount` | all | Total number of items across all pages. |
 | `totalPages` | `pageNumber` | Total number of pages. |
@@ -387,6 +390,54 @@ paginationSchemes:
 
 The client pages through with `pageToken`/`nextPageToken` as usual. The **last** page omits `nextPageToken` and includes `nextSyncToken` instead; the client persists it and sends it back as `syncToken` on a later request to receive only the changes since that sync.
 
+### 8.7 Bidirectional pagination (YouTube-style)
+
+```yaml
+paginationSchemes:
+  pageToken:
+    type: pageToken
+    request:
+      queryParameters:
+        pageToken:
+          role: pageToken
+    response:
+      bodyFields:
+        nextPageToken:
+          role: nextPageToken
+        prevPageToken:
+          role: previousPageToken
+```
+
+Matches a response body shaped like:
+
+```json
+{
+  "nextPageToken": "CAUQAA",
+  "prevPageToken": "CAUQAB",
+  "pageInfo": { "totalResults": 1000, "resultsPerPage": 5 }
+}
+```
+
+The YouTube Data API echoes either token back through the same `pageToken` request parameter, so only the response side needs to distinguish direction. Some cursor-based APIs instead expose two distinct request parameters — one per direction — which is what the `previousPageToken` request role is for:
+
+```yaml
+paginationSchemes:
+  cursor:
+    type: pageToken
+    request:
+      queryParameters:
+        after:
+          role: pageToken
+        before:
+          role: previousPageToken
+    response:
+      bodyFields:
+        nextCursor:
+          role: nextPageToken
+        previousCursor:
+          role: previousPageToken
+```
+
 ---
 
 ## 9. Validation
@@ -395,8 +446,8 @@ A conforming implementation MUST enforce:
 
 1. `type` MUST be one of `pageNumber`, `pageToken`, `nextLink`, or `incrementalSync`.
 2. At least one of `request` or `response` MUST be present.
-3. `role` values in request fields MUST be from: `page`, `pageSize`, `offset`, `pageToken`, `cursor`, `syncToken` — or an `x-` prefixed extension.
-4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `nextSyncToken`, `totalCount`, `totalPages`, `pageSize`, `currentPage` — or an `x-` prefixed extension.
+3. `role` values in request fields MUST be from: `page`, `pageSize`, `offset`, `pageToken`, `cursor`, `previousPageToken`, `syncToken` — or an `x-` prefixed extension.
+4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `previousPageToken`, `previousLink`, `nextSyncToken`, `totalCount`, `totalPages`, `pageSize`, `currentPage` — or an `x-` prefixed extension.
 5. The `scheme` field in a Pagination Application Object (§5) MUST reference a key that exists in `components.paginationSchemes`.
 6. `itemsField` in an Envelope Object, when present, MUST resolve to a field whose value is an array.
 
