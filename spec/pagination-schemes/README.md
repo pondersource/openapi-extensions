@@ -27,13 +27,13 @@ components:
           <param-name>:    # Request Field Object (§4.3.1)
             role: page | pageSize | offset | pageToken | cursor | previousPageToken | syncToken
             required: false
-        bodyFields: { ... }
+        bodyFields: { ... }   # keys MAY use dot-notation for nested fields, e.g. metadata.continue
         headerFields: { ... }
       response:            # Response Pagination Fields Object (§4.4)
         envelope:          # Envelope Object (§4.4.2)
           itemsField: results
         bodyFields:
-          <field-name>:    # Response Field Object (§4.4.1)
+          <field-name>:    # Response Field Object (§4.4.1), key MAY use dot-notation
             role: nextPageToken | nextCursor | nextLink | previousPageToken | previousLink | nextSyncToken | totalCount | totalPages | pageSize | currentPage
         headers:
           <header-name>: { ... }
@@ -84,7 +84,7 @@ Describes the fields the client sends to control pagination.
 | Field | Type | Description |
 |-------|------|-------------|
 | `queryParameters` | `Record<string, RequestFieldObject>` | Query string parameters. Key is the parameter name. |
-| `bodyFields` | `Record<string, RequestFieldObject>` | Top-level fields in the JSON request body. Key is the field name. |
+| `bodyFields` | `Record<string, RequestFieldObject>` | Fields in the JSON request body. Key is the field name, or a dot-path (e.g. `filter.updatedSince`) to address a nested field — see §4.4.2's `itemsField` for the same convention. |
 | `headerFields` | `Record<string, RequestFieldObject>` | HTTP request headers. Key is the header name. |
 | `x-*` | any | Extension fields. |
 
@@ -105,7 +105,7 @@ Describes the fields the client reads from the server response to determine the 
 | Field | Type | Description |
 |-------|------|-------------|
 | `envelope` | `EnvelopeObject` (§4.4.2) | Locates the array of items being paginated within the response body. Defaults to the response body root. |
-| `bodyFields` | `Record<string, ResponseFieldObject>` | Top-level fields in the JSON response body. Key is the field name as it appears in the response. |
+| `bodyFields` | `Record<string, ResponseFieldObject>` | Fields in the JSON response body. Key is the field name as it appears in the response, or a dot-path (e.g. `metadata.continue`, `tokenPagination.pageToken`) to address a field nested inside an object. Each path segment is a literal property name; a segment MUST be escaped as `["a.b"]` if it contains a literal `.`. |
 | `headers` | `Record<string, ResponseFieldObject>` | HTTP response headers. Key is the header name. |
 | `x-*` | any | Extension fields. |
 
@@ -438,6 +438,33 @@ paginationSchemes:
           role: previousPageToken
 ```
 
+### 8.8 Nested response body field paths (Kubernetes/Cloud Run-style)
+
+```yaml
+paginationSchemes:
+  pageToken:
+    type: pageToken
+    request:
+      queryParameters:
+        continue:
+          role: pageToken
+    response:
+      bodyFields:
+        metadata.continue:
+          role: nextPageToken
+```
+
+Matches a response body shaped like:
+
+```json
+{
+  "items": [ { "id": 1 } ],
+  "metadata": { "continue": "abc123" }
+}
+```
+
+The same convention resolves the `tokenPagination.pageToken` field used by the Android Enterprise API.
+
 ---
 
 ## 9. Validation
@@ -450,6 +477,7 @@ A conforming implementation MUST enforce:
 4. `role` values in response fields MUST be from: `nextPageToken`, `nextCursor`, `nextLink`, `previousPageToken`, `previousLink`, `nextSyncToken`, `totalCount`, `totalPages`, `pageSize`, `currentPage` — or an `x-` prefixed extension.
 5. The `scheme` field in a Pagination Application Object (§5) MUST reference a key that exists in `components.paginationSchemes`.
 6. `itemsField` in an Envelope Object, when present, MUST resolve to a field whose value is an array.
+7. A dot-path key in `bodyFields` (request or response) MUST resolve, segment by segment, to a field nested inside the (request or response) body; each segment is a literal property name unless bracket-escaped (e.g. `["a.b"]`).
 
 A validation error SHOULD identify the precise location of the violation (e.g. `paginationSchemes.myScheme.request.queryParameters.page`).
 
