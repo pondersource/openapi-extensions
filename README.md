@@ -14,6 +14,7 @@ Each extension lives in its own directory under [`spec/`](spec/), with its own s
 ## Proposals
 
 - [Filtering and per-item Links](spec/filtering/README.md): API field predicates, authentication-dependent views, and minimal extensions to standard OpenAPI Links (draft for issue #17).
+- [OAuth Authentication Scheme Details](spec/oauth-authentication-details/README.md): token-endpoint authentication capabilities, PKCE requirements, authorization-request parameters, and token-issuance semantics (draft for issues #14, #15, and #16).
 
 ## Adding a new extension
 
