@@ -11,6 +11,10 @@ Each extension lives in its own directory under [`spec/`](spec/), with its own s
 | Pagination Schemes | Describes API pagination behaviour (`paginationSchemes`) so clients and tooling can navigate paginated responses without hand-written, API-specific logic. | [`spec/pagination-schemes`](spec/pagination-schemes/README.md) |
 | CRUD Causality | Describes the create/read/update/delete effect of operations (`crudResources`, `x-crud`) — object URLs, server-added fields, and collection membership — so tooling can derive an API's full state-transition behaviour, e.g. to drive a stateful mock server. | [`spec/crud-causality`](spec/crud-causality/README.md) |
 
+## Proposals
+
+- [Filtering and per-item Links](spec/filtering/README.md): API field predicates, authentication-dependent views, and minimal extensions to standard OpenAPI Links (draft for issue #17).
+
 ## Adding a new extension
 
 1. Create a new directory under `spec/` named after the extension (kebab-case).
