@@ -153,7 +153,10 @@ downgrade security behavior.
 
 If neither retrieved nor inline metadata supplies a field, its value is
 unknown. When a retrieved RFC 8414 metadata document omits a field for which
-RFC 8414 defines a default, that RFC default still applies.
+RFC 8414 defines a default, that RFC default still applies before comparison
+with inline metadata. For example, omitted
+**token_endpoint_auth_methods_supported** means **client_secret_basic**; an
+inline list containing only **client_secret_post** conflicts with it.
 
 ### 4.3 Authorization Code Details Object
 
@@ -178,7 +181,9 @@ At least one field MUST be present.
 **required** means authorization requests without a valid PKCE challenge are
 rejected. **optional** means both PKCE and non-PKCE requests can be accepted.
 **conditional** means the server requires PKCE when a listed condition holds.
-**unsupported** means the server does not accept PKCE.
+**unsupported** means the server does not implement or validate PKCE. It does
+not assert that the server rejects otherwise unknown authorization parameters;
+OAuth authorization endpoints can ignore unrecognized parameters.
 
 This specification defines **publicClients** as a **requiredFor** value: PKCE is
 required when the authorization server classifies the registered client as a
@@ -205,7 +210,7 @@ The following capability is defined by this specification:
 
 | Value | Meaning |
 | --- | --- |
-| **offlineAccess** | The profile requests authorization that can be used while the resource owner is absent. If granted, this normally requires a refresh token or another server-defined mechanism. |
+| **offlineAccess** | The profile requests authorization that can be used while the resource owner is absent by means of a refresh token. |
 
 The capability describes what the authorization request asks the authorization
 server to grant. It does not state that the request will be approved.
@@ -224,9 +229,11 @@ operation, this field SHOULD reference the same Parameter Object.
 
 The value MUST conform to the parameter schema and MUST be serialized according
 to the Parameter Object. A parameter name MUST NOT be **client_id**,
-**redirect_uri**, **response_type**, **scope**, or **state**. Those parameters
-already have protocol-defined construction rules and are not fixed profile
-metadata.
+**client_secret**, **redirect_uri**, **response_type**, **scope**, **state**,
+**code**, **code_challenge**, **code_challenge_method**, or **code_verifier**.
+Those parameters have protocol-defined construction rules, carry credentials
+or grants, or are generated per authorization attempt; they are not fixed
+profile metadata.
 
 ### 4.7 Token Issuance Object
 
@@ -440,7 +447,8 @@ A conforming validator MUST enforce these rules:
    applicable.
 4. Inline metadata arrays are non-empty, contain unique registered values, and
    agree with metadata retrieved through **oauth2MetadataUrl** when both supply
-   the same field.
+   the same field. RFC 8414 defaults are applied to omitted retrieved fields
+   before this comparison.
 5. PKCE **requirement** is **required**, **optional**, **conditional**, or
    **unsupported**. Conditional requirements have non-empty **requiredFor** and
    **description** values. Other requirement values omit **requiredFor**.
