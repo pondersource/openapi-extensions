@@ -166,12 +166,10 @@ response shape.
 ### 6.1 Generic authenticated user
 
 [examples/generic.yaml](examples/generic.yaml) is an authenticated fixed
-`HTTPS GET /me` operation. It is the bounded first subset for the reference
-implementation: a caller selects it by `{operationId, namespace}`, evaluates
-the response expressions, and receives the declared principal metadata.
-Supporting other methods, paths, response selection, or discovery strategies
-does not change the general extension semantics; it is deferred from that
-small implementation.
+`HTTPS GET /me` operation. Its bearer security scheme illustrates that this
+declaration is independent of the protocol used to obtain credentials. The
+reference proxy currently obtains credentials through OAuth authorization
+code flows; it does not provide a standalone bearer-token login form.
 
 ### 6.2 Google OpenID Connect UserInfo
 
@@ -231,8 +229,12 @@ should minimize storage and disclosure of these optional claims.
 ## Reference Implementation
 
 The initial reference implementation supports a selected authenticated,
-fixed-HTTPS `GET` operation. Its selection input is exactly
-`{operationId, namespace}` and it evaluates the declared response expressions.
+fixed-HTTPS `GET` operation without request parameters, using the catalog's
+selected OAuth authorization-code security scheme. Its separate identity
+selection is `{operationId, namespace}` and it evaluates the declared response
+expressions. Direct OpenID Connect discovery, other credential acquisition
+methods, and organization or service-account login are outside this initial
+runtime subset; their descriptions remain valid under this extension.
 It requires explicit `stable: true` and `reassigned: false`, and a nonempty
 string or integer result for `subject`. It is intentionally narrower than the
 extension, so providers can describe the same contract before every operation
